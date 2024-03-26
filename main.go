@@ -83,7 +83,6 @@ func downloadModFileAndParseJson(modPath string) {
 	for {
 		line, _, err := reader.ReadLine()
 		if err != nil {
-			fmt.Println(err)
 			return
 		}
 		out += string(line)
