@@ -85,7 +85,6 @@ func downloadModFileAndParseJson(modPath string) {
 			return
 		}
 		out += string(line)
-		fmt.Println(string(line) == "}")
 		if string(line) == "}" {
 			var mod Mod
 			err := json.Unmarshal([]byte(out), &mod)
