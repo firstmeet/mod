@@ -6,9 +6,18 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
+
+	"github.com/panjf2000/ants/v2"
 )
+
+var list sync.Map
+var pool *ants.Pool
+var wg sync.WaitGroup
 
 type Mod struct {
 	Path     string
@@ -29,32 +38,52 @@ func main() {
 	flag.StringVar(&packagePath, "p", "", "packagePath")
 	flag.IntVar(&goruntineNum, "n", 10, "goruntineNum")
 	flag.Parse()
+	pool, _ = ants.NewPool(goruntineNum, ants.WithPreAlloc(true))
+	defer pool.Release()
 	if modPath == "" && packagePath == "" {
 		fmt.Println("Please input mod file path or package path")
 		return
 	}
-	ch := make(chan struct{}, goruntineNum)
-	wg := sync.WaitGroup{}
+	wg = sync.WaitGroup{}
 	if packagePath == "" {
 		wg.Add(1)
-		go func() {
+		pool.Submit(func() {
 			defer wg.Done()
-			downloadModFileAndParseJson(modPath, ch)
-		}()
+			downloadModFileAndParseJson(modPath)
+		})
 	}
 	if modPath == "" {
 		wg.Add(1)
-		go func() {
+		pool.Submit(func() {
 			defer wg.Done()
-			downloadPackageAndParseJson(packagePath, ch)
-		}()
+			downloadPackageAndParseJson(packagePath)
+		})
 	}
 	wg.Wait()
+	fmt.Println("------------------------")
+	fmt.Printf("\t\tDone\n")
+	fmt.Println("------------------------")
 }
 
-func downloadModFileAndParseJson(modPath string, ch chan struct{}) {
-	ch <- struct{}{}
-	defer func() { <-ch }()
+func downloadModFileAndParseJson(modPath string) {
+	// ch <- struct{}{}
+	// defer func() { <-ch }()
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("Recovered in f", r)
+		}
+	}()
+	defer func() {
+		//get modPath dir and removeall dir
+		dir := filepath.Dir(modPath)
+		if dir == "." {
+			return
+		}
+		err := os.RemoveAll(dir)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}()
 	shell := fmt.Sprintf("go mod download -json -modfile=%s", modPath)
 	cmd := exec.Command("sh", "-c", shell)
 	output, err := cmd.CombinedOutput()
@@ -79,18 +108,39 @@ func downloadModFileAndParseJson(modPath string, ch chan struct{}) {
 			err := json.Unmarshal([]byte(out), &mod)
 			if err != nil {
 				fmt.Println(err)
+				fmt.Println(out)
 				return
 			}
 			out = ""
 			fmt.Println(mod.GoMod)
-			downloadModFileAndParseJson(mod.GoMod, ch)
+			if _, ok := list.Load(mod.GoMod); ok {
+				continue
+			}
+			list.Store(mod.GoMod, struct{}{})
+			err = os.MkdirAll(mod.Path+"/"+mod.Version, 0755)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			targetFile := filepath.Join(mod.Path, mod.Version, "go.mod")
+			_, err = CopyFile(mod.GoMod, targetFile)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			//copy mod file to path
+			wg.Add(1)
+			pool.Submit(func() {
+				defer wg.Done()
+				downloadModFileAndParseJson(targetFile)
+			})
 		}
 	}
 }
 
-func downloadPackageAndParseJson(packagePath string, ch chan struct{}) {
-	ch <- struct{}{}
-	defer func() { <-ch }()
+func downloadPackageAndParseJson(packagePath string) {
+	// ch <- struct{}{}
+	// defer func() { <-ch }()
 	shell := fmt.Sprintf("go list -m -json %s", packagePath)
 	cmd := exec.Command("sh", "-c", shell)
 	output, err := cmd.CombinedOutput()
@@ -118,7 +168,39 @@ func downloadPackageAndParseJson(packagePath string, ch chan struct{}) {
 			}
 			out = ""
 			fmt.Println(mod.GoMod)
-			downloadModFileAndParseJson(mod.GoMod, ch)
+			if _, ok := list.Load(mod.GoMod); ok {
+				continue
+			}
+			list.Store(mod.GoMod, struct{}{})
+			err = os.MkdirAll(mod.Path+"/"+mod.Version, 0755)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			targetFile := filepath.Join(mod.Path, mod.Version, "go.mod")
+			_, err = CopyFile(mod.GoMod, targetFile)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+			wg.Add(1)
+			pool.Submit(func() {
+				defer wg.Done()
+				downloadModFileAndParseJson(targetFile)
+			})
 		}
 	}
+}
+func CopyFile(sourceFile, targetFile string) (written int64, err error) {
+	src, err := os.Open(sourceFile)
+	if err != nil {
+		return
+	}
+	defer src.Close()
+	dst, err := os.Create(targetFile)
+	if err != nil {
+		return
+	}
+	defer dst.Close()
+	return io.Copy(dst, src)
 }
