@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/panjf2000/ants/v2"
 )
@@ -85,6 +86,8 @@ func downloadModFileAndParseJson(modPath string) {
 		}
 	}()
 	shell := fmt.Sprintf("go mod download -json -modfile=%s", modPath)
+	fmt.Println("start exec shell:", shell)
+	now := time.Now()
 	cmd := exec.Command("sh", "-c", shell)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -92,7 +95,8 @@ func downloadModFileAndParseJson(modPath string) {
 		fmt.Println(string(output))
 		return
 	}
-	fmt.Println(string(output))
+	fmt.Println("end exec shell:", shell)
+	fmt.Println("exec time:", time.Since(now))
 	var out string
 	buf := bytes.Buffer{}
 	buf.Write(output)
@@ -112,7 +116,6 @@ func downloadModFileAndParseJson(modPath string) {
 				return
 			}
 			out = ""
-			fmt.Println(mod.GoMod)
 			if _, ok := list.Load(mod.GoMod); ok {
 				continue
 			}
@@ -148,7 +151,6 @@ func downloadPackageAndParseJson(packagePath string) {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println(string(output))
 	var out string
 	buf := bytes.Buffer{}
 	buf.Write(output)
@@ -167,7 +169,6 @@ func downloadPackageAndParseJson(packagePath string) {
 				return
 			}
 			out = ""
-			fmt.Println(mod.GoMod)
 			if _, ok := list.Load(mod.GoMod); ok {
 				continue
 			}
