@@ -11,13 +11,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
-	"time"
-
-	"github.com/panjf2000/ants/v2"
 )
 
 var list sync.Map
-var pool *ants.Pool
 var wg sync.WaitGroup
 
 type Mod struct {
@@ -39,43 +35,28 @@ func main() {
 	flag.StringVar(&packagePath, "p", "", "packagePath")
 	flag.IntVar(&goruntineNum, "n", 10, "goruntineNum")
 	flag.Parse()
-	pool, _ = ants.NewPool(goruntineNum, ants.WithPreAlloc(true))
-	defer pool.Release()
 	if modPath == "" && packagePath == "" {
 		fmt.Println("Please input mod file path or package path")
 		return
 	}
-	wg = sync.WaitGroup{}
 	if packagePath == "" {
-		wg.Add(1)
-		pool.Submit(func() {
-			defer wg.Done()
-			downloadModFileAndParseJson(modPath)
-		})
+		downloadModFileAndParseJson(modPath)
 	}
 	if modPath == "" {
-		wg.Add(1)
-		pool.Submit(func() {
-			defer wg.Done()
-			downloadPackageAndParseJson(packagePath)
-		})
+		downloadPackageAndParseJson(packagePath)
 	}
 	wg.Wait()
 	fmt.Println("------------------------")
-	fmt.Printf("\t\tDone\n")
+	fmt.Printf("\t\t\t\tDone\n")
 	fmt.Println("------------------------")
 }
-
 func downloadModFileAndParseJson(modPath string) {
-	// ch <- struct{}{}
-	// defer func() { <-ch }()
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Println("Recovered in f", r)
 		}
 	}()
 	defer func() {
-		//get modPath dir and removeall dir
 		dir := filepath.Dir(modPath)
 		if dir == "." {
 			return
@@ -86,8 +67,6 @@ func downloadModFileAndParseJson(modPath string) {
 		}
 	}()
 	shell := fmt.Sprintf("go mod download -json -modfile=%s", modPath)
-	fmt.Println("start exec shell:", shell)
-	now := time.Now()
 	cmd := exec.Command("sh", "-c", shell)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -95,8 +74,6 @@ func downloadModFileAndParseJson(modPath string) {
 		fmt.Println(string(output))
 		return
 	}
-	fmt.Println("end exec shell:", shell)
-	fmt.Println("exec time:", time.Since(now))
 	var out string
 	buf := bytes.Buffer{}
 	buf.Write(output)
@@ -104,9 +81,11 @@ func downloadModFileAndParseJson(modPath string) {
 	for {
 		line, _, err := reader.ReadLine()
 		if err != nil {
-			break
+			fmt.Println(err)
+			return
 		}
 		out += string(line)
+		fmt.Println(string(line) == "}")
 		if string(line) == "}" {
 			var mod Mod
 			err := json.Unmarshal([]byte(out), &mod)
@@ -117,7 +96,7 @@ func downloadModFileAndParseJson(modPath string) {
 			}
 			out = ""
 			if _, ok := list.Load(mod.GoMod); ok {
-				continue
+				return
 			}
 			list.Store(mod.GoMod, struct{}{})
 			err = os.MkdirAll(mod.Path+"/"+mod.Version, 0755)
@@ -131,16 +110,11 @@ func downloadModFileAndParseJson(modPath string) {
 				fmt.Println(err)
 				return
 			}
-			//copy mod file to path
-			wg.Add(1)
-			pool.Submit(func() {
-				defer wg.Done()
-				downloadModFileAndParseJson(targetFile)
-			})
+			downloadModFileAndParseJson(targetFile)
 		}
 	}
-}
 
+}
 func downloadPackageAndParseJson(packagePath string) {
 	// ch <- struct{}{}
 	// defer func() { <-ch }()
@@ -165,12 +139,13 @@ func downloadPackageAndParseJson(packagePath string) {
 			var mod Mod
 			err := json.Unmarshal([]byte(out), &mod)
 			if err != nil {
+				out = ""
 				fmt.Println(err)
 				return
 			}
 			out = ""
 			if _, ok := list.Load(mod.GoMod); ok {
-				continue
+				return
 			}
 			list.Store(mod.GoMod, struct{}{})
 			err = os.MkdirAll(mod.Path+"/"+mod.Version, 0755)
@@ -184,11 +159,7 @@ func downloadPackageAndParseJson(packagePath string) {
 				fmt.Println(err)
 				return
 			}
-			wg.Add(1)
-			pool.Submit(func() {
-				defer wg.Done()
-				downloadModFileAndParseJson(targetFile)
-			})
+			downloadModFileAndParseJson(targetFile)
 		}
 	}
 }
