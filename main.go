@@ -118,8 +118,16 @@ func downloadModFileAndParseJson(modPath string) {
 func downloadPackageAndParseJson(packagePath string) {
 	// ch <- struct{}{}
 	// defer func() { <-ch }()
-	shell := fmt.Sprintf("go list -m -json %s", packagePath)
+	//go get package
+	shell := fmt.Sprintf("go get -u -v %s", packagePath)
 	cmd := exec.Command("sh", "-c", shell)
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	shell = fmt.Sprintf("go list -m -json %s", packagePath)
+	cmd = exec.Command("sh", "-c", shell)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		fmt.Println(err)
