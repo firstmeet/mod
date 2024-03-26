@@ -67,8 +67,10 @@ func downloadModFileAndParseJson(modPath string) {
 		}
 	}()
 	shell := fmt.Sprintf("go mod download -json -modfile=%s", modPath)
+	fmt.Println("start download:--- ", modPath)
 	cmd := exec.Command("sh", "-c", shell)
 	output, err := cmd.CombinedOutput()
+	fmt.Println("end download:--- ", modPath)
 	if err != nil {
 		fmt.Println(err)
 		fmt.Println(string(output))
